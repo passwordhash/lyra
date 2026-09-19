@@ -1,0 +1,522 @@
+<!doctype html>
+<!--
+  PROTOTYPE (выбросить после решения). Ответ на вопрос не живёт здесь.
+  Вопрос (тикет #5 «Структура экранов и навигация»): как устроены экраны Lyra —
+  навигация, mini-player, карточка плеера, ручной порядок треков, свайпы.
+  План: 3 радикально разных варианта на одном «роуте», переключение ?variant=
+  через плавающую панель снизу (стрелки и клавиши ←/→).
+  Варианты:
+    A — таб-бар снизу + шторка плеера (структурный клон Apple Music)
+    B — плеер-хаб: сегменты сверху, постоянный Now Playing снизу
+    C — горизонтальные страницы (свайп Треки↔Альбомы↔Плейлисты), без таб-бара
+-->
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lyra — прототип структуры экранов</title>
+<style>
+  :root {
+    --bg: #000;
+    --panel: #1c1c1e;
+    --panel2: #2c2c2e;
+    --text: #fff;
+    --text2: #8e8e93;
+    --accent: #fa233b;
+    --separator: rgba(255,255,255,.08);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  body {
+    background: #111; color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+    min-height: 100vh; display: flex; flex-direction: column; align-items: center;
+    padding: 24px 12px 120px;
+  }
+  header { max-width: 430px; text-align: center; margin-bottom: 18px; }
+  header h1 { font-size: 20px; font-weight: 700; }
+  header p { color: var(--text2); font-size: 13px; margin-top: 6px; line-height: 1.5; }
+  #gist { max-width: 430px; font-size: 13px; line-height: 1.55; color: var(--text);
+          background: var(--panel); border-radius: 14px; padding: 12px 14px; margin-bottom: 16px; }
+  #gist b { color: var(--accent); }
+  #gist ul { margin: 6px 0 0 18px; }
+
+  /* ---- телефон ---- */
+  .phone {
+    width: 390px; height: 844px; background: var(--bg);
+    border-radius: 54px; border: 4px solid #333; overflow: hidden;
+    position: relative; box-shadow: 0 30px 80px rgba(0,0,0,.7);
+    display: flex; flex-direction: column;
+  }
+  .statusbar {
+    height: 54px; flex: none; display: flex; justify-content: space-between; align-items: center;
+    padding: 14px 32px 0; font-size: 15px; font-weight: 600; position: relative; z-index: 40;
+  }
+  .island {
+    position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+    width: 118px; height: 32px; background: #000; border-radius: 20px; z-index: 41;
+  }
+  .stage { flex: 1; position: relative; overflow: hidden; display: flex; flex-direction: column; }
+
+  /* ---- общие элементы экранов ---- */
+  .screen { position: absolute; inset: 0; display: flex; flex-direction: column; background: var(--bg); }
+  .screen.hidden { display: none; }
+  .body { flex: 1; overflow-y: auto; padding: 0 16px 130px; }
+  .body::-webkit-scrollbar { display: none; }
+  h2.large { font-size: 32px; font-weight: 800; letter-spacing: -.5px; padding: 6px 0 12px; }
+  .navblur {
+    position: absolute; top: 0; left: 0; right: 0; z-index: 30;
+    background: rgba(28,28,30,.75); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  }
+  .navbar { padding: 8px 16px 8px; font-size: 17px; font-weight: 600; text-align: center; }
+  .backbtn { position: absolute; left: 8px; top: 6px; padding: 6px 10px; color: var(--accent); font-size: 17px; }
+
+  .row {
+    display: flex; align-items: center; gap: 12px; padding: 8px 0; position: relative;
+    border-bottom: 1px solid var(--separator); user-select: none;
+  }
+  .cover {
+    width: 52px; height: 52px; border-radius: 8px; flex: none;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; font-weight: 700; color: rgba(255,255,255,.85);
+  }
+  .row .meta { flex: 1; min-width: 0; }
+  .row .t { font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row .s { font-size: 13px; color: var(--text2); margin-top: 2px; }
+  .row .dur { font-size: 13px; color: var(--text2); font-variant-numeric: tabular-nums; }
+  .row .eq { color: var(--accent); font-size: 12px; }
+
+  /* свайп-действия: клик по строке раскрывает, что было бы под свайпом */
+  .row .swipe {
+    position: absolute; right: 0; top: 4px; bottom: 4px; display: none; gap: 8px; align-items: stretch;
+  }
+  .row.open { background: var(--panel); border-radius: 10px; }
+  .row.open .swipe { display: flex; }
+  .row.open .dur, .row.open .eq { display: none; }
+  .swipe button {
+    border: 0; border-radius: 8px; background: var(--panel2); color: #fff;
+    font-size: 11px; padding: 0 10px; display: flex; flex-direction: column; gap: 3px;
+    align-items: center; justify-content: center; font-family: inherit;
+  }
+  .swipe button i { font-style: normal; font-size: 15px; }
+
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 4px; }
+  .grid .cell .cover { width: 100%; height: 100%; aspect-ratio: 1; border-radius: 12px; font-size: 34px; }
+  .grid .cell .t { font-size: 15px; font-weight: 600; margin-top: 6px; }
+  .grid .cell .s { font-size: 13px; color: var(--text2); margin-top: 2px; }
+
+  /* экран альбома/плейлиста */
+  .albumhead { display: flex; gap: 16px; padding: 8px 0 14px; align-items: flex-end; }
+  .albumhead .cover { width: 170px; height: 170px; border-radius: 10px; font-size: 44px; box-shadow: 0 12px 30px rgba(0,0,0,.6); }
+  .albumhead .kind { font-size: 12px; color: var(--text2); text-transform: uppercase; letter-spacing: .5px; }
+  .albumhead .name { font-size: 21px; font-weight: 700; margin: 4px 0; }
+  .albumhead .artist { font-size: 15px; color: var(--text2); }
+  .actions { display: flex; gap: 10px; margin: 6px 0 14px; }
+  .actions .btn {
+    flex: 1; border: 1px solid rgba(255,255,255,.15); border-radius: 10px; padding: 9px 0;
+    text-align: center; font-size: 15px; font-weight: 600; color: var(--accent);
+  }
+  .actions .btn.solid { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .editbar { display: flex; justify-content: space-between; align-items: center; padding: 4px 0 10px; }
+  .editbar .hint { font-size: 12px; color: var(--text2); }
+  .editbar button { background: none; border: 0; color: var(--accent); font-size: 15px; font-weight: 600; font-family: inherit; }
+  .handle { display: none; color: var(--text2); font-size: 18px; padding-right: 2px; cursor: grab; }
+  .editing .handle { display: block; }
+  .editing .row { background: var(--panel); border-radius: 10px; border-bottom-color: transparent; margin-bottom: 2px; }
+  .row.dragover { border-top: 2px solid var(--accent); }
+
+  /* мини-плеер */
+  .mini {
+    position: absolute; left: 12px; right: 12px; bottom: 92px; z-index: 35;
+    background: rgba(58,58,60,.85); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
+    border-radius: 14px; padding: 8px 10px; display: flex; align-items: center; gap: 10px;
+    box-shadow: 0 10px 30px rgba(0,0,0,.5); cursor: pointer;
+  }
+  .mini .cover { width: 42px; height: 42px; border-radius: 6px; }
+  .mini .t { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mini .s { font-size: 12px; color: var(--text2); }
+  .mini .ctrl { margin-left: auto; display: flex; gap: 16px; font-size: 18px; padding-right: 6px; }
+  .mini.noBar { bottom: 16px; }
+
+  /* таб-бар (вариант A) */
+  .tabbar {
+    position: absolute; left: 0; right: 0; bottom: 0; z-index: 36; height: 80px;
+    background: rgba(20,20,22,.92); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
+    border-top: 1px solid var(--separator);
+    display: flex; justify-content: space-around; align-items: flex-start; padding-top: 8px;
+  }
+  .tabbar .tab { flex: 1; text-align: center; color: var(--text2); font-size: 10px; }
+  .tabbar .tab i { display: block; font-size: 22px; font-style: normal; margin-bottom: 3px; }
+  .tabbar .tab.on { color: var(--accent); }
+
+  /* сегменты (вариант B) */
+  .segments {
+    display: flex; background: rgba(118,118,128,.24); border-radius: 9px; padding: 2px; gap: 2px;
+  }
+  .segments button {
+    flex: 1; border: 0; border-radius: 7px; background: transparent; color: #fff;
+    font-size: 13px; font-weight: 600; padding: 6px 0; font-family: inherit;
+  }
+  .segments button.on { background: #636366; }
+
+  /* страницы (вариант C) */
+  .pager { display: flex; gap: 6px; justify-content: center; padding: 8px 0 10px; }
+  .pager i { width: 7px; height: 7px; border-radius: 50%; background: rgba(255,255,255,.3); }
+  .pager i.on { background: #fff; }
+  .pages {
+    display: flex; overflow-x: auto; scroll-snap-type: x mandatory; flex: 1;
+  }
+  .pages::-webkit-scrollbar { display: none; }
+  .page { min-width: 100%; scroll-snap-align: start; padding: 0 16px 140px; overflow-y: auto; }
+  .page::-webkit-scrollbar { display: none; }
+  .page h2.large { position: sticky; top: 0; background: var(--bg); padding-bottom: 8px; z-index: 5; }
+
+  /* карточка плеера */
+  .player {
+    position: absolute; inset: 0; z-index: 50; background: #241f26;
+    display: flex; flex-direction: column; padding: 16px 24px 30px;
+    transform: translateY(105%); transition: transform .35s cubic-bezier(.32,.72,0,1);
+  }
+  .player.up { transform: translateY(0); }
+  .player .chevron { text-align: center; color: rgba(255,255,255,.6); font-size: 18px; padding: 6px; }
+  .player .pcov { width: 100%; aspect-ratio: 1; border-radius: 14px; font-size: 64px;
+    display: flex; align-items: center; justify-content: center; box-shadow: 0 20px 50px rgba(0,0,0,.55); margin-top: 10px; }
+  .player .pt { font-size: 22px; font-weight: 700; margin-top: 26px; }
+  .player .ps { font-size: 19px; color: rgba(255,255,255,.6); margin-top: 3px; }
+  .player .pctrl { display: flex; justify-content: space-between; align-items: center; margin-top: 30px; font-size: 34px; }
+  .player .pctrl .play { font-size: 52px; }
+  .player .queuebtn { margin-top: auto; text-align: center; color: rgba(255,255,255,.7); font-size: 15px; padding: 12px; }
+  .player .queuebtn i { display: block; font-style: normal; font-size: 20px; margin-bottom: 2px; }
+
+  /* очередь (шторка Playing Next) */
+  .queue {
+    position: absolute; left: 0; right: 0; bottom: 0; z-index: 60; height: 78%;
+    background: #2b2830; border-radius: 16px 16px 0 0; padding: 14px 16px 24px;
+    transform: translateY(105%); transition: transform .3s cubic-bezier(.32,.72,0,1);
+    display: flex; flex-direction: column; box-shadow: 0 -20px 60px rgba(0,0,0,.6);
+  }
+  .queue.up { transform: translateY(0); }
+  .queue .qh { display: flex; justify-content: space-between; align-items: center; padding-bottom: 8px; }
+  .queue .qh b { font-size: 17px; }
+  .queue .qh button { background: none; border: 0; color: var(--accent); font-size: 15px; font-family: inherit; }
+  .queue .qsub { font-size: 12px; color: var(--text2); margin: 8px 0 4px; }
+  .queue .qlist { overflow-y: auto; flex: 1; }
+  .queue .qlist::-webkit-scrollbar { display: none; }
+  .queue .row .cover { width: 40px; height: 40px; }
+
+  /* ---- переключатель прототипа (не часть дизайна) ---- */
+  #switcher {
+    position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); z-index: 100;
+    background: #fff; color: #000; border-radius: 999px; padding: 8px 14px;
+    display: flex; align-items: center; gap: 12px; font-weight: 600; font-size: 14px;
+    box-shadow: 0 8px 30px rgba(0,0,0,.6);
+  }
+  #switcher button {
+    border: 0; background: #eee; border-radius: 50%; width: 28px; height: 28px;
+    font-size: 14px; cursor: pointer; font-family: inherit;
+  }
+  #switcher .lbl { min-width: 220px; text-align: center; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Lyra — прототип структуры экранов</h1>
+  <p>Выброс: отвечает только на вопрос «как устроена навигация и экраны».
+     Переключай варианты стрелками внизу или клавишами ←/→. Всё кликабельно:
+     строки, обложки, мини-плеер, «Изменить» в альбоме (треки таскаются мышью).</p>
+</header>
+
+<div id="gist"></div>
+
+<div class="phone">
+  <div class="statusbar"><span>9:41</span><span>●●● ▮</span></div>
+  <div class="island"></div>
+  <div class="stage" id="stage"></div>
+</div>
+
+<div id="switcher">
+  <button id="prev">◀</button>
+  <span class="lbl" id="lbl"></span>
+  <button id="next">▶</button>
+</div>
+
+<script>
+/* ---------- данные (общие для всех вариантов) ---------- */
+const C = { red:'linear-gradient(135deg,#ff5f6d,#a4133c)', blue:'linear-gradient(135deg,#4f8fff,#1b3b8f)',
+            green:'linear-gradient(135deg,#43e97b,#0f7a3d)', violet:'linear-gradient(135deg,#a06cff,#4c1d95)',
+            amber:'linear-gradient(135deg,#ffd166,#b07500)', teal:'linear-gradient(135deg,#2dd4bf,#0f766e)' };
+const TRACKS = [
+  {id:1, t:'Северный ветер', a:'Аврора', al:'Тишина', g:C.red,   d:'4:12'},
+  {id:2, t:'Стеклянный берег',a:'Аврора', al:'Тишина', g:C.red,   d:'3:48'},
+  {id:3, t:'Полночь',        a:'Аврора', al:'Тишина', g:C.red,   d:'5:03'},
+  {id:4, t:'Гравитация',     a:'Маяк',  al:'Сигналы', g:C.blue,  d:'3:21'},
+  {id:5, t:'Орбита',         a:'Маяк',  al:'Сигналы', g:C.blue,  d:'4:37'},
+  {id:6, t:'Тишина в эфире', a:'Маяк',  al:'Сигналы', g:C.blue,  d:'6:10'},
+  {id:7, t:'Летний дождь',   a:'Полина',al:'Тёплый воздух', g:C.green, d:'3:55'},
+  {id:8, t:'Тёплый воздух',  a:'Полина',al:'Тёплый воздух', g:C.green, d:'4:44'},
+];
+const ALBUMS = [
+  {id:'al1', name:'Тишина', artist:'Аврора', g:C.red, year:'2024', tracks:[1,2,3]},
+  {id:'al2', name:'Сигналы', artist:'Маяк', g:C.blue, year:'2023', tracks:[4,5,6]},
+  {id:'al3', name:'Тёплый воздух', artist:'Полина', g:C.green, year:'2025', tracks:[7,8]},
+  {id:'al4', name:'Одиночество', artist:'Маяк', g:C.violet, year:'2021', tracks:[5,6]},
+];
+const PLAYLISTS = [
+  {id:'pl1', name:'Дорога домой', g:C.amber, tracks:[1,4,7]},
+  {id:'pl2', name:'Ночная смена', g:C.teal, tracks:[3,6,8]},
+];
+const QUEUE = { now: 4, next: [5,6,1,2] };
+const T = id => TRACKS.find(x => x.id === id);
+const initialOrder = [...ALBUMS[0].tracks];
+
+/* ---------- состояние ---------- */
+const S = {
+  variant: new URLSearchParams(location.search).get('variant') || 'A',
+  screen: 'library',          // library | albums | playlists | album | playlist
+  album: 'al1', playlist: 'pl1',
+  seg: 'library', page: 'library',
+  editing: false,
+  order: [...ALBUMS[0].tracks],
+  player: false, queue: false,
+  playing: 'Сигналы',
+};
+
+/* ---------- шаблоны ---------- */
+const cov = (g, txt, cls='') => `<div class="cover ${cls}" style="background:${g}">${txt||''}</div>`;
+const trackRow = (id, opts={}) => {
+  const t = T(id);
+  const playing = S.playing === t.al && !opts.compact;
+  return `<div class="row" data-swipe data-id="${id}">
+    ${opts.handle ? '<span class="handle">≡</span>' : ''}
+    ${cov(t.g, '', '')}
+    <div class="meta"><div class="t">${t.t}</div><div class="s">${opts.sub || t.a}</div></div>
+    ${playing ? '<span class="eq">▶ ▁▃▅</span>' : `<span class="dur">${t.d}</span>`}
+    <div class="swipe">
+      <button data-act="next"><i>⏭</i>Далее</button>
+      <button data-act="last"><i>⤵</i>В конец</button>
+      <button data-act="pl"><i>＋</i>Плейлист</button>
+    </div>
+  </div>`;
+};
+const listScreen = (title, rows) => `
+  <div class="screen">
+    <div class="body"><h2 class="large">${title}</h2>${rows}</div>
+  </div>`;
+const albumsGrid = () => `<div class="grid">${ALBUMS.map(a => `
+    <div class="cell" data-open="album" data-al="${a.id}">
+      ${cov(a.g, a.name[0])}
+      <div class="t">${a.name}</div><div class="s">${a.artist} · ${a.year}</div>
+    </div>`).join('')}</div>`;
+const playlistsGrid = () => `<div class="grid">${PLAYLISTS.map(p => `
+    <div class="cell" data-open="playlist" data-pl="${p.id}">
+      ${cov(p.g, p.name[0])}
+      <div class="t">${p.name}</div><div class="s">${p.tracks.length} трека</div>
+    </div>`).join('')}
+    <div class="cell" data-open="newpl">${cov('rgba(255,255,255,.08)', '＋')}
+      <div class="t">Новый плейлист</div><div class="s">собрать вручную</div></div>
+  </div>`;
+const albumsScreen = () => `<div class="screen"><div class="body"><h2 class="large">Альбомы</h2>${albumsGrid()}</div></div>`;
+const playlistsScreen = () => `<div class="screen"><div class="body"><h2 class="large">Плейлисты</h2>${playlistsGrid()}</div></div>`;
+const albumScreen = (al) => {
+  const rows = S.order.map(id => trackRow(id, {handle:true, sub:'—'})).join('');
+  return `<div class="screen">
+    <div class="navblur"><div class="navbar"><span class="backbtn" data-act="back">‹ Медиатека</span></div></div>
+    <div class="body" style="padding-top:44px">
+      <div class="albumhead">${cov(al.g, al.name[0])}
+        <div><div class="kind">Альбом</div><div class="name">${al.name}</div>
+        <div class="artist">${al.artist} · ${al.year}</div></div></div>
+      <div class="actions">
+        <div class="btn solid" data-act="play">▶ Проиграть</div>
+        <div class="btn" data-act="shuffle">⤨ Перемешать</div>
+      </div>
+      <div class="editbar ${S.editing ? '' : 'onlyRead'}">
+        <span class="hint">${S.editing ? 'Потяни за ≡, чтобы изменить порядок' : 'Порядок треков — твой, сохраняется'}</span>
+        <button data-act="edit">${S.editing ? 'Готово' : 'Изменить'}</button>
+      </div>
+      <div id="sortable" class="${S.editing ? 'editing' : ''}">${rows}</div>
+    </div></div>`;
+};
+const playlistScreen = (pl) => `<div class="screen">
+    <div class="navblur"><div class="navbar"><span class="backbtn" data-act="back">‹ Плейлисты</span></div></div>
+    <div class="body" style="padding-top:44px">
+      <div class="albumhead">${cov(pl.g, pl.name[0])}
+        <div><div class="kind">Плейлист</div><div class="name">${pl.name}</div>
+        <div class="artist">${pl.tracks.length} трека · вручную</div></div></div>
+      <div class="actions"><div class="btn solid" data-act="play">▶ Проиграть</div>
+        <div class="btn" data-act="shuffle">⤨ Перемешать</div></div>
+      ${pl.tracks.map(id => trackRow(id)).join('')}
+    </div></div>`;
+const mini = (noBar) => `<div class="mini ${noBar ? 'noBar' : ''}" data-act="player">
+  ${cov(C.red)}<div><div class="t">Гравитация</div><div class="s">Маяк</div></div>
+  <div class="ctrl"><span data-act="player">▶</span><span data-act="player">⏭</span></div></div>`;
+const tabbar = () => `<div class="tabbar">
+  ${[['library','♪','Треки'],['albums','▤','Альбомы'],['playlists','☰','Плейлисты']].map(([k,i,n]) =>
+    `<div class="tab ${S.screen===k?'on':''}" data-tab="${k}"><i>${i}</i>${n}</div>`).join('')}
+</div>`;
+const player = () => `<div class="player ${S.player?'up':''}" id="playercard">
+  <div class="chevron" data-act="closeplayer">⌃</div>
+  ${cov(C.blue, 'С', 'pcov')}
+  <div class="pt">Орбита</div><div class="ps">Маяк — Сигналы</div>
+  <div class="pctrl"><span>⏮</span><span class="play">⏸</span><span>⏭</span></div>
+  <div style="display:flex;justify-content:space-between;margin-top:26px;font-size:20px;color:rgba(255,255,255,.75)">
+    <span>⤨</span><span>AirPlay ◉</span><span data-act="queue">≡</span></div>
+  <div class="queuebtn" data-act="queue"><i>≡</i>Играет далее</div>
+</div>`;
+const queueSheet = () => `<div class="queue ${S.queue?'up':''}" id="queuesheet">
+  <div class="qh"><b>Играет далее</b><button data-act="clearq">Очистить</button></div>
+  <div class="qsub">Из «Сигналы» — дальше по альбому</div>
+  <div class="qlist">
+    ${trackRow(QUEUE.now, {compact:true}).replace('class="row"','class="row" style="background:#3a3540;border-radius:10px"')}
+    <div class="qsub">Далее</div>
+    ${QUEUE.next.map(id => trackRow(id)).join('')}
+  </div></div>`;
+
+/* ---------- варианты ---------- */
+function renderA() {
+  let scr;
+  if (S.screen === 'albums') scr = albumsScreen();
+  else if (S.screen === 'playlists') scr = playlistsScreen();
+  else if (S.screen === 'album') scr = albumScreen(ALBUMS.find(a => a.id === S.album));
+  else if (S.screen === 'playlist') scr = playlistScreen(PLAYLISTS.find(p => p.id === S.playlist));
+  else scr = listScreen('Треки', TRACKS.map(t => trackRow(t.id)).join(''));
+  return scr + mini() + tabbar() + player();
+}
+function renderB() {
+  if (S.screen === 'album' || S.screen === 'playlist') {
+    return (S.screen === 'album'
+      ? albumScreen(ALBUMS.find(a => a.id === S.album)).replace('‹ Медиатека', '‹ Назад')
+      : playlistScreen(PLAYLISTS.find(p => p.id === S.playlist))) + mini(true) + player();
+  }
+  const title = {library:'Треки', albums:'Альбомы', playlists:'Плейлисты'}[S.seg];
+  const content = S.seg === 'albums' ? albumsGrid()
+    : S.seg === 'playlists' ? playlistsGrid()
+    : TRACKS.map(t => trackRow(t.id)).join('');
+  return `<div class="screen"><div class="body" style="padding-bottom:170px">
+    <h2 class="large">Lyra</h2>
+    <div style="position:sticky;top:0;z-index:10;background:rgba(0,0,0,.92);padding:6px 0 10px">
+      <div class="segments">${[['library','Треки'],['albums','Альбомы'],['playlists','Плейлисты']].map(([k,n]) =>
+        `<button class="${S.seg===k?'on':''}" data-seg="${k}">${n}</button>`).join('')}</div>
+    </div>
+    <div style="font-size:22px;font-weight:700;margin:6px 0 10px">${title}</div>
+    ${content}
+  </div></div>` + mini(true) + player();
+}
+function renderC() {
+  if (S.screen === 'album' || S.screen === 'playlist') {
+    return (S.screen === 'album'
+      ? albumScreen(ALBUMS.find(a => a.id === S.album)).replace('‹ Медиатека','‹ Назад')
+      : playlistScreen(PLAYLISTS.find(p => p.id === S.playlist))) + mini(true) + player();
+  }
+  const pages = [['library','Треки'],['albums','Альбомы'],['playlists','Плейлисты']].map(([k, title]) => {
+    const inner = k === 'albums' ? albumsGrid()
+      : k === 'playlists' ? playlistsGrid()
+      : TRACKS.map(t => trackRow(t.id)).join('');
+    return `<div class="page" data-page="${k}"><h2 class="large">${title}</h2>${inner}</div>`;
+  }).join('');
+  return `<div class="screen">
+    <div class="body" style="padding-bottom:150px">
+      <div class="pager">${['library','albums','playlists'].map(k =>
+        `<i class="${S.page===k?'on':''}"></i>`).join('')}</div>
+      <div class="pages" id="pages">${pages}</div>
+    </div></div>` + mini(true) + player();
+}
+
+const VARIANTS = {
+  A: { name: 'Таб-бар снизу (клон Apple Music)', render: renderA,
+       gist: `<b>A — Таб-бар снизу + шторка плеера.</b> Три вкладки внизу, мини-плеер парит над ними,
+         тап — карточка плеера выезжает снизу, очередь — шторка из плеера. Полный структурный клон Apple Music.
+         <ul><li>смахни (кликни) строку в «Треках» → действия «Далее / В конец / Плейлист»</li>
+         <li>открой альбом → «Изменить» → перетащи трек за ≡</li></ul>` },
+  B: { name: 'Плеер-хаб: сегменты сверху', render: renderB,
+       gist: `<b>B — Плеер-хаб.</b> Без таб-бара: разделы — сегментами под заголовком (как старая «Медиатека»),
+         снизу всегда живой Now Playing с управлением — плеер в одном касании, навигация сверху.
+         <ul><li>переключай сегменты, открой альбом — стек поверх</li>
+         <li>тапни нижнюю панель → карточка плеера</li></ul>` },
+  C: { name: 'Горизонтальные страницы', render: renderC,
+       gist: `<b>C — Горизонтальные страницы.</b> Без таб-бара и сегментов: Треки↔Альбомы↔Плейлисты листаются
+         горизонтально (свайп/скролл внутри рамки), точки-индикатор сверху, мини-плеер снизу.
+         <ul><li>прокрути контент горизонтально — страницы листаются, точки меняются</li>
+         <li>тап по обложке альбома — экран альбома поверх</li></ul>` },
+};
+const KEYS = ['A','B','C'];
+
+/* ---------- рендер и события ---------- */
+const stage = document.getElementById('stage');
+function render() {
+  stage.innerHTML = VARIANTS[S.variant].render() + queueSheet();
+  document.getElementById('lbl').textContent = `${S.variant} (${VARIANTS[S.variant].name})`;
+  document.getElementById('gist').innerHTML = VARIANTS[S.variant].gist;
+  history.replaceState(null, '', `?variant=${S.variant}`);
+  wireDrag();
+  const pages = document.getElementById('pages');
+  if (pages) {
+    pages.scrollLeft = ['library','albums','playlists'].indexOf(S.page) * pages.clientWidth;
+    pages.addEventListener('scroll', () => {
+      const i = Math.round(pages.scrollLeft / pages.clientWidth);
+      if (i !== ['library','albums','playlists'].indexOf(S.page)) {
+        S.page = ['library','albums','playlists'][i]; render();
+      }
+    }, {passive:true});
+  }
+}
+stage.addEventListener('click', e => {
+  const swipeRow = e.target.closest('[data-swipe]');
+  const act = e.target.closest('[data-act]')?.dataset.act;
+  const tab = e.target.closest('[data-tab]')?.dataset.tab;
+  const seg = e.target.closest('[data-seg]')?.dataset.seg;
+  const open = e.target.closest('[data-open]')?.dataset;
+  if (act === 'player') { S.player = true; return render(); }
+  if (act === 'closeplayer') { S.player = false; S.queue = false; return render(); }
+  if (act === 'queue') { S.queue = !S.queue; return render(); }
+  if (act === 'clearq') return render(); // прототип: просто реакция
+  if (act === 'edit') { S.editing = !S.editing; if (!S.editing) S.order = [...initialOrder]; return render(); }
+  if (act === 'back') { S.screen = 'library'; S.seg = 'library'; return render(); }
+  if (tab) { S.screen = tab; return render(); }
+  if (seg) { S.seg = seg; return render(); }
+  if (open) {
+    if (open.open === 'album') { S.album = open.al; S.order = [...ALBUMS.find(a => a.id === open.al).tracks]; S.editing = false; S.screen = 'album'; return render(); }
+    if (open.open === 'playlist') { S.playlist = open.pl; S.screen = 'playlist'; return render(); }
+  }
+  if (swipeRow && !S.editing && !e.target.closest('.swipe')) {
+    const was = swipeRow.classList.contains('open');
+    stage.querySelectorAll('.row.open').forEach(r => r.classList.remove('open'));
+    if (!was) swipeRow.classList.add('open');
+  }
+});
+
+/* drag-n-drop порядка треков (общий для всех вариантов) */
+function wireDrag() {
+  const box = document.getElementById('sortable');
+  if (!box) return;
+  let from = null;
+  box.querySelectorAll('.row').forEach((row, i) => {
+    row.draggable = S.editing;
+    row.addEventListener('dragstart', () => from = i);
+    row.addEventListener('dragover', ev => { ev.preventDefault(); row.classList.add('dragover'); });
+    row.addEventListener('dragleave', () => row.classList.remove('dragover'));
+    row.addEventListener('drop', ev => {
+      ev.preventDefault(); row.classList.remove('dragover');
+      if (from === null || from === i) return;
+      S.order.splice(i, 0, S.order.splice(from, 1)[0]); from = null; render();
+    });
+  });
+}
+
+/* переключатель вариантов */
+function cycle(d) {
+  const i = (KEYS.indexOf(S.variant) + d + KEYS.length) % KEYS.length;
+  S.variant = KEYS[i]; S.screen = 'library'; S.seg = 'library'; S.page = 'library';
+  S.editing = false; S.order = [...initialOrder]; S.player = false; S.queue = false;
+  render();
+}
+document.getElementById('prev').onclick = () => cycle(-1);
+document.getElementById('next').onclick = () => cycle(1);
+document.addEventListener('keydown', e => {
+  if (/INPUT|TEXTAREA/.test(document.activeElement.tagName)) return;
+  if (e.key === 'ArrowLeft') cycle(-1);
+  if (e.key === 'ArrowRight') cycle(1);
+});
+render();
+</script>
+</body>
+</html>

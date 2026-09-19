@@ -1,9 +1,9 @@
 ## Agent skills
 
-### Issue tracker
+### Трекер задач
 
-Issues live in GitHub Issues (via the `gh` CLI). See `docs/agents/issue-tracker.md`.
+Issues живут в GitHub Issues (через `gh` CLI). См. `docs/agents/issue-tracker.md`.
 
-### Domain docs
+### Доменные доки
 
-Single-context: `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+Single-context: `CONTEXT.md` + `docs/adr/` в корне репозитория. См. `docs/agents/domain.md`.

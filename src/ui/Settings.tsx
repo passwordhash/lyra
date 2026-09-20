@@ -1,8 +1,8 @@
 /**
  * Экран настроек (решение #9): секция «Библиотека» — подключённая папка,
  * последний успешный рескан, отключение с полной очисткой; секция «Общие» —
- * язык «Системный / Русский / English» (override хранится в state-таблице,
- * применение к строкам — тикет #15). Темы нет: только системная.
+ * язык «Системный / Русский / English» (override в state-таблице + немедленное
+ * применение через i18n, тикет #15). Темы нет: только системная.
  */
 import { useCallback, useState } from 'react';
 import {
@@ -16,27 +16,28 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
+import { useTranslation } from 'react-i18next';
 import { initDb } from '../db';
 import * as repo from '../db/repo';
 import { disconnectFolder, libraryStats, type LibraryStats } from '../library';
+import { setLanguage, type LanguageSetting } from '../i18n';
 import { ACCENT } from './theme';
 
-type LanguageSetting = 'system' | 'ru' | 'en';
-
-const LANGS: { key: LanguageSetting; label: string }[] = [
-  { key: 'system', label: 'Системный' },
+// Названия языков — эндонимы («Русский», «English») в любой локали, как в iOS.
+const LANGS: { key: LanguageSetting; label: string | null }[] = [
+  { key: 'system', label: null },
   { key: 'ru', label: 'Русский' },
   { key: 'en', label: 'English' },
 ];
 
-const dateFmt = new Intl.DateTimeFormat('ru-RU', {
-  day: 'numeric',
-  month: 'long',
-  hour: '2-digit',
-  minute: '2-digit',
-});
-
 export default function SettingsScreen() {
+  const { t, i18n } = useTranslation();
+  const dateFmt = new Intl.DateTimeFormat(i18n.language, {
+    day: 'numeric',
+    month: 'long',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
   const [stats, setStats] = useState<LibraryStats | null>(null);
   const [lang, setLang] = useState<LanguageSetting>('system');
 
@@ -51,16 +52,17 @@ export default function SettingsScreen() {
   const chooseLanguage = async (key: LanguageSetting) => {
     setLang(key);
     await repo.setState(await initDb(), 'language_override', key === 'system' ? null : key);
+    await setLanguage(key);
   };
 
   const confirmDisconnect = () => {
     Alert.alert(
-      'Отключить папку?',
-      'Библиотека будет полностью очищена: треки, альбомы, плейлисты, очередь и настройки плеера.',
+      t('settings.disconnectTitle'),
+      t('settings.disconnectBody'),
       [
-        { text: 'Отмена', style: 'cancel' },
+        { text: t('settings.cancel'), style: 'cancel' },
         {
-          text: 'Отключить',
+          text: t('settings.disconnectAction'),
           style: 'destructive',
           onPress: () => {
             void (async () => {
@@ -79,8 +81,8 @@ export default function SettingsScreen() {
       contentContainerStyle={styles.content}
       contentInsetAdjustmentBehavior="automatic"
     >
-      <Section title="БИБЛИОТЕКА">
-        <Row label="Папка">
+      <Section title={t('settings.librarySection')}>
+        <Row label={t('settings.folder')}>
           {stats?.folderName ? (
             <View style={styles.valueCol}>
               <Text style={styles.value}>{stats.folderName}</Text>
@@ -89,17 +91,17 @@ export default function SettingsScreen() {
               </Text>
             </View>
           ) : (
-            <Text style={styles.valuePlaceholder}>Не подключена</Text>
+            <Text style={styles.valuePlaceholder}>{t('settings.notConnected')}</Text>
           )}
         </Row>
         <Separator />
-        <Row label="Треки">
+        <Row label={t('settings.tracks')}>
           <Text style={styles.value}>{stats ? String(stats.trackCount) : '—'}</Text>
         </Row>
         <Separator />
-        <Row label="Последний рескан">
+        <Row label={t('settings.lastScan')}>
           <Text style={styles.value}>
-            {stats?.lastScanAt ? dateFmt.format(new Date(stats.lastScanAt)) : 'Ещё не было'}
+            {stats?.lastScanAt ? dateFmt.format(new Date(stats.lastScanAt)) : t('settings.never')}
           </Text>
         </Row>
         <Separator />
@@ -108,16 +110,18 @@ export default function SettingsScreen() {
           disabled={!stats?.folderName}
           onPress={confirmDisconnect}
         >
-          <Text style={[styles.destructiveText, !stats?.folderName && styles.disabled]}>Отключить папку</Text>
+          <Text style={[styles.destructiveText, !stats?.folderName && styles.disabled]}>
+            {t('settings.disconnect')}
+          </Text>
         </Pressable>
       </Section>
 
-      <Section title="ОБЩИЕ">
+      <Section title={t('settings.generalSection')}>
         {LANGS.map((l, i) => (
           <View key={l.key}>
             {i > 0 ? <Separator /> : null}
             <Pressable style={styles.row} onPress={() => void chooseLanguage(l.key)}>
-              <Text style={styles.label}>{l.label}</Text>
+              <Text style={styles.label}>{l.label ?? t('settings.systemLanguage')}</Text>
               {lang === l.key ? <Ionicons name="checkmark" size={20} color={ACCENT} /> : null}
             </Pressable>
           </View>

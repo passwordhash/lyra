@@ -16,14 +16,14 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useTranslation } from 'react-i18next';
 import { initDb } from '../db';
 import { connectFolder, libraryStats, type LibraryStats } from '../library';
 import { isSyncing, onSyncingChange } from '../sync';
 import { ACCENT } from './theme';
 
-const SEGMENTS = ['Треки', 'Альбомы', 'Плейлисты'] as const;
-
 export default function HomeScreen() {
+  const { t } = useTranslation();
   const navigation = useNavigation<NativeStackNavigationProp<{ Home: undefined; Settings: undefined }>>();
   const syncing = useSyncExternalStore(onSyncingChange, isSyncing);
   const [seg, setSeg] = useState(0);
@@ -67,19 +67,21 @@ export default function HomeScreen() {
       contentContainerStyle={styles.content}
       contentInsetAdjustmentBehavior="automatic"
     >
-      <Segments index={seg} onChange={setSeg} />
+      <Segments
+        labels={[t('seg.tracks'), t('seg.albums'), t('seg.playlists')]}
+        index={seg}
+        onChange={setSeg}
+      />
       {isEmpty ? (
         <View style={styles.empty}>
           <Ionicons name="musical-notes-outline" size={56} color={PlatformColor('secondaryLabelColor')} />
-          <Text style={styles.emptyTitle}>Библиотека пуста</Text>
+          <Text style={styles.emptyTitle}>{t('home.emptyTitle')}</Text>
           <Text style={styles.emptyText}>
-            {hasFolder
-              ? 'В подключённой папке не нашлось треков mp3/flac/m4a.'
-              : 'Подключите папку с музыкой — треки из неё появятся здесь.'}
+            {hasFolder ? t('home.emptyNoTracks') : t('home.emptyNoFolder')}
           </Text>
           {!hasFolder ? (
             <Pressable style={styles.cta} onPress={() => void handleConnect()}>
-              <Text style={styles.ctaText}>Подключить папку</Text>
+              <Text style={styles.ctaText}>{t('home.connectFolder')}</Text>
             </Pressable>
           ) : null}
         </View>
@@ -88,10 +90,10 @@ export default function HomeScreen() {
   );
 }
 
-function Segments({ index, onChange }: { index: number; onChange: (i: number) => void }) {
+function Segments({ labels, index, onChange }: { labels: string[]; index: number; onChange: (i: number) => void }) {
   return (
     <View style={styles.segments}>
-      {SEGMENTS.map((label, i) => (
+      {labels.map((label, i) => (
         <Pressable key={label} style={[styles.seg, i === index && styles.segOn]} onPress={() => onChange(i)}>
           <Text style={[styles.segText, i === index && styles.segTextOn]}>{label}</Text>
         </Pressable>

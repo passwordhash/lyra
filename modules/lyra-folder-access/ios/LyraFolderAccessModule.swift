@@ -17,7 +17,7 @@ final class FolderNotConnected: Exception {
   override var reason: String { "Папка библиотеки не подключена" }
 }
 
-final class LyraFolderAccessModule: Module {
+public final class LyraFolderAccessModule: Module {
   private static let bookmarkKey = "lyra.syncFolderBookmark"
   private static let audioExtensions: Set<String> = ["mp3", "flac", "m4a"]
 

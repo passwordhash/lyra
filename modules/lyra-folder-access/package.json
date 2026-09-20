@@ -1,0 +1,10 @@
+{
+  "name": "lyra-folder-access",
+  "version": "1.0.0",
+  "description": "Нативный доступ к папке библиотеки: Document Picker (open-mode), security-scoped bookmark, листинг mp3/flac/m4a, чтение файлов",
+  "main": "index.ts",
+  "license": "MIT",
+  "author": "Yaroslav",
+  "homepage": "https://github.com/passwordhash/lyra",
+  "private": true
+}

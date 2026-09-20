@@ -299,6 +299,11 @@ export async function listTracks(db: SQLiteDatabase): Promise<Track[]> {
   return db.getAllAsync('SELECT * FROM tracks ORDER BY title COLLATE NOCASE');
 }
 
+export async function countTracks(db: SQLiteDatabase): Promise<number> {
+  const row = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM tracks');
+  return row?.n ?? 0;
+}
+
 export async function getTrack(db: SQLiteDatabase, id: number): Promise<Track | null> {
   return (await db.getFirstAsync('SELECT * FROM tracks WHERE id = ?', [id])) ?? null;
 }

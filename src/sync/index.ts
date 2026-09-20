@@ -14,9 +14,23 @@ export { SyncAborted, type RescanResult } from './core';
 
 let inFlight: Promise<RescanResult> | null = null;
 
+const syncingListeners = new Set<() => void>();
+
 /** Идёт ли рескан — для спиннера у заголовка (#9). */
 export function isSyncing(): boolean {
   return inFlight !== null;
+}
+
+/** Подписка на старт/конец рескана (useSyncExternalStore в UI). */
+export function onSyncingChange(cb: () => void): () => void {
+  syncingListeners.add(cb);
+  return () => {
+    syncingListeners.delete(cb);
+  };
+}
+
+function notifySyncing(): void {
+  for (const cb of syncingListeners) cb();
 }
 
 /**
@@ -44,6 +58,8 @@ export async function rescanLibrary(db: SQLiteDatabase): Promise<RescanResult> {
     return runRescan(db, io);
   })().finally(() => {
     inFlight = null;
+    notifySyncing();
   });
+  notifySyncing();
   return inFlight;
 }

@@ -1,10 +1,20 @@
 import { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View } from 'react-native';
+import { useColorScheme } from 'react-native';
+import { DarkTheme, DefaultTheme, NavigationContainer } from '@react-navigation/native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { initDb } from './src/db';
 import { rescanLibrary } from './src/sync';
+import HomeScreen from './src/ui/Home';
+import SettingsScreen from './src/ui/Settings';
+
+const Stack = createNativeStackNavigator();
 
 export default function App() {
+  // Тема — только системная (#9): следуем scheme, без override.
+  const scheme = useColorScheme();
+
   useEffect(() => {
     void (async () => {
       const db = await initDb();
@@ -14,18 +24,18 @@ export default function App() {
   }, []);
 
   return (
-    <View style={styles.container}>
-      <Text>Open up App.tsx to start working on your app!</Text>
-      <StatusBar style="auto" />
-    </View>
+    <SafeAreaProvider>
+      <NavigationContainer theme={scheme === 'dark' ? DarkTheme : DefaultTheme}>
+        <Stack.Navigator>
+          <Stack.Screen
+            name="Home"
+            component={HomeScreen}
+            options={{ title: 'Lyra', headerLargeTitle: true, headerShadowVisible: false }}
+          />
+          <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: 'Настройки' }} />
+        </Stack.Navigator>
+        <StatusBar style="auto" />
+      </NavigationContainer>
+    </SafeAreaProvider>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});

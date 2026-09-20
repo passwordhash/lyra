@@ -128,11 +128,11 @@ export async function clearLibrary(db: SQLiteDatabase): Promise<void> {
 
 // ---- Синхронизация (решение #8; вызывать внутри транзакции рескана) ----
 
-export type TrackSignature = Pick<Track, 'id' | 'path' | 'size' | 'mtime'>;
+export type TrackSignature = Pick<Track, 'id' | 'path' | 'size' | 'mtime' | 'album_id'>;
 
 /** Снимок известных треков для диффа рескана. */
 export async function listTrackSignatures(db: SQLiteDatabase): Promise<TrackSignature[]> {
-  return db.getAllAsync('SELECT id, path, size, mtime FROM tracks');
+  return db.getAllAsync('SELECT id, path, size, mtime, album_id FROM tracks');
 }
 
 /** Ключ группировки альбома: (title, album_artist; при отсутствии — artist) — решение #7.4. */
@@ -140,15 +140,17 @@ export async function findOrCreateAlbum(
   db: SQLiteDatabase,
   title: string,
   albumArtist: string,
+  year: number | null = null,
 ): Promise<number> {
   const row = await db.getFirstAsync<{ id: number }>(
     'SELECT id FROM albums WHERE title = ? AND album_artist = ?',
     [title, albumArtist],
   );
   if (row) return row.id;
-  const res = await db.runAsync('INSERT INTO albums (title, album_artist) VALUES (?, ?)', [
+  const res = await db.runAsync('INSERT INTO albums (title, album_artist, year) VALUES (?, ?, ?)', [
     title,
     albumArtist,
+    year,
   ]);
   return res.lastInsertRowId;
 }
@@ -224,6 +226,60 @@ export async function deleteTracks(db: SQLiteDatabase, ids: number[]): Promise<v
   if (nowPlaying?.value && idSet.has(Number(nowPlaying.value))) {
     await db.runAsync("DELETE FROM state WHERE key = 'now_playing_track_id'");
   }
+}
+
+/** Рескан: новый трек дописывается в конец заданного ручного порядка альбома (#8). */
+export async function appendAlbumTrackOrder(
+  db: SQLiteDatabase,
+  albumId: number,
+  trackId: number,
+): Promise<void> {
+  const album = await db.getFirstAsync<{ track_order: string | null }>(
+    'SELECT track_order FROM albums WHERE id = ?',
+    [albumId],
+  );
+  if (!album?.track_order) return;
+  await db.runAsync('UPDATE albums SET track_order = ? WHERE id = ?', [
+    JSON.stringify([...(JSON.parse(album.track_order) as number[]), trackId]),
+    albumId,
+  ]);
+}
+
+/** Обложка альбома = первая найденная среди треков (#7.5); выставляется, только если её ещё нет. */
+export async function setAlbumArtworkIfMissing(
+  db: SQLiteDatabase,
+  albumId: number,
+  artworkPath: string,
+): Promise<void> {
+  await db.runAsync('UPDATE albums SET artwork_path = ? WHERE id = ? AND artwork_path IS NULL', [
+    artworkPath,
+    albumId,
+  ]);
+}
+
+/**
+ * Пересчёт обложки альбома на первую оставшуюся среди треков (#8). Возвращает
+ * прежний путь, если обложка сбросилась в null: файл в кэше осиротел, его
+ * надо удалить с диска (сам рескан).
+ */
+export async function recomputeAlbumArtwork(db: SQLiteDatabase, albumId: number): Promise<string | null> {
+  const album = await db.getFirstAsync<{ artwork_path: string | null }>(
+    'SELECT artwork_path FROM albums WHERE id = ?',
+    [albumId],
+  );
+  if (!album) return null;
+  await db.runAsync(
+    `UPDATE albums SET artwork_path =
+       (SELECT artwork_path FROM tracks
+        WHERE album_id = albums.id AND artwork_path IS NOT NULL ORDER BY id LIMIT 1)
+     WHERE id = ?`,
+    [albumId],
+  );
+  const after = await db.getFirstAsync<{ artwork_path: string | null }>(
+    'SELECT artwork_path FROM albums WHERE id = ?',
+    [albumId],
+  );
+  return album.artwork_path && !after?.artwork_path ? album.artwork_path : null;
 }
 
 /** Удалить опустевшие альбомы (с перегруппировки и удалений), вернуть их обложки для удаления с диска. */

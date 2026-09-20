@@ -1,51 +1,9 @@
 // Самопроверка слоя БД: репо-функции прогоняются на node:sqlite через шим
 // интерфейса expo-sqlite. Запуск: npm run check
 import assert from 'node:assert/strict';
-import { DatabaseSync } from 'node:sqlite';
-import type { SQLiteDatabase } from 'expo-sqlite';
 import { migrate } from '../src/db/migrations';
 import * as repo from '../src/db/repo';
-
-/** Шим node:sqlite под интерфейс SQLiteDatabase, который использует repo. */
-function makeDb(): SQLiteDatabase {
-  const native = new DatabaseSync(':memory:');
-  native.exec('PRAGMA foreign_keys = ON');
-  const begin = () => native.exec('BEGIN');
-  const commit = () => native.exec('COMMIT');
-  const rollback = () => native.exec('ROLLBACK');
-  return {
-    execAsync: async (sql: string) => {
-      native.exec(sql);
-    },
-    runAsync: async (sql: string, params: unknown[] = []) => {
-      const r = native.prepare(sql).run(...(params as never[])) as { changes: number | bigint; lastInsertRowid?: number | bigint };
-      return { changes: Number(r.changes), lastInsertRowId: Number(r.lastInsertRowid ?? 0) };
-    },
-    getAllAsync: async (sql: string, params: unknown[] = []) => native.prepare(sql).all(...(params as never[])),
-    getFirstAsync: async (sql: string, params: unknown[] = []) =>
-      native.prepare(sql).get(...(params as never[])) ?? null,
-    withTransactionAsync: async (task: () => Promise<void>) => {
-      begin();
-      try {
-        await task();
-        commit();
-      } catch (e) {
-        rollback();
-        throw e;
-      }
-    },
-    withExclusiveTransactionAsync: async (task: () => Promise<void>) => {
-      begin();
-      try {
-        await task();
-        commit();
-      } catch (e) {
-        rollback();
-        throw e;
-      }
-    },
-  } as unknown as SQLiteDatabase;
-}
+import { makeDb } from './lib/sqlite-shim';
 
 function track(over: Partial<repo.NewTrack> = {}): repo.NewTrack {
   return {

@@ -23,7 +23,8 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "check": "tsx scripts/check-db.ts",
-    "check:tags": "NODE_OPTIONS=--conditions=import tsx scripts/check-tags.ts"
+    "check:tags": "NODE_OPTIONS=--conditions=import tsx scripts/check-tags.ts",
+    "check:sync": "tsx scripts/check-sync.ts"
   },
   "private": true
 }
